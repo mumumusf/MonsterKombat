@@ -83,9 +83,19 @@ npm install axios ethers chalk
 
 ## 使用说明
 
-1. 启动脚本
+1. 运行方式（三选一）：
+
 ```bash
-npm start
+# 方式1：直接运行（前台运行）
+node monster.js
+
+# 方式2：使用 screen 后台运行（推荐）
+screen -S monster
+node monster.js
+# 按 Ctrl+A 然后按 D 分离会话
+
+# 方式3：使用 pm2 后台运行
+pm2 start monster.js --name monster
 ```
 
 2. 按提示输入：
@@ -103,11 +113,34 @@ npm start
      * 完成所有基础任务
      * 保存钱包信息和余额
 
+4. 查看运行状态：
+```bash
+# 如果使用 screen
+screen -r monster    # 重新连接到会话
+screen -ls          # 查看所有会话
+
+# 如果使用 pm2
+pm2 logs monster    # 查看日志
+pm2 status         # 查看状态
+```
+
+5. 停止运行：
+```bash
+# 如果使用 screen
+screen -r monster    # 重新连接到会话
+# 按 Ctrl+C 停止程序
+exit                # 退出会话
+
+# 如果使用 pm2
+pm2 stop monster    # 停止程序
+pm2 delete monster  # 删除程序
+```
+
 ## 注意事项
 
 - ⚠️ 请确保 VPS 有稳定的网络连接
 - ⚠️ 建议使用 screen 或 tmux 在后台运行脚本
-- ⚠️ 每个钱包创建之间有 10 秒的延迟，以避免触发服务器限制
+- ⚠️ 每个钱包创建之间有 10 秒的延迟，无论创建成功或失败都会等待
 - ⚠️ 定期检查 wallets.json 文件以查看钱包信息
 - ⚠️ 请勿频繁创建大量钱包，以免被游戏服务器限制
 

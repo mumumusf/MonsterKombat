@@ -359,94 +359,73 @@ function displayBattleSummary(battleResults) {
 }
 
 /**
- * 批量注册钱包并执行游戏操作
+ * 注册多个钱包并完成游戏任务
  * @param {number} count - 要创建的钱包数量
  * @param {string} refCode - 推荐码
  */
 async function registerWallets(count, refCode) {
-    console.log('==============================================');
-    console.log('           MonsterKombat 自动机器人           ');
-    console.log('               小林出品                      ');
-    console.log('==============================================');
+    console.log(`\n🚀 开始创建 ${count} 个钱包...\n`);
+    const battleResults = [];
 
-    for (let i = 1; i <= count; i++) {
-        console.log(`\n⚡ 正在创建第 ${i} 个钱包...`);
-        const wallet = generateWallet();
-        console.log(`✅ 地址: ${wallet.address}`);
-
-        console.log('⚡ 正在登录...');
-        const accessToken = await signIn(wallet, refCode);
-        if (!accessToken) {
-            console.log(`❌ 注册钱包失败: ${wallet.address}`);
-            continue;
-        }
-
-        console.log('⚡ 正在开启免费宝可梦...');
-        await openFreePokemon(accessToken);
-
-        console.log('⚡ 正在获取宝可梦列表...');
-        const pokemons = await getMyPokemons(accessToken);
+    for (let i = 0; i < count; i++) {
+        console.log(`\n📝 创建第 ${i + 1}/${count} 个钱包`);
         
-        const battleResults = [];
-        if (pokemons.length > 0) {
-            const pokemonId = pokemons[0]._id;
-            console.log(`✅ 宝可梦: ${pokemons[0].name} (ID: ${pokemonId})`);
-
-            console.log('⚡ 开始第一场战斗...');
-            const battle1 = await fight(accessToken, pokemonId);
-            if (battle1.success) battleResults.push(battle1);
+        try {
+            // 创建新钱包
+            const wallet = generateWallet();
             
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            console.log('⚡ 开始第二场战斗...');
-            const battle2 = await fight(accessToken, pokemonId);
-            if (battle2.success) battleResults.push(battle2);
-        } else {
-            console.log('❌ 未找到宝可梦');
-        }
-
-        await completeTasks(accessToken);
-        
-        console.log('⚡ 正在获取余额...');
-        const balance = await getUserBalance(accessToken);
-        console.log(`✅ 余额: 💰 代币: ${balance.token}, 💎 宝石: ${balance.gem}`);
-
-        if (battleResults.length > 0) {
-            let wins = 0;
-            let losses = 0;
-            let totalTokens = 0;
-            let totalGems = 0;
-
-            for (const result of battleResults) {
-                if (result.isWin) wins++;
-                else losses++;
-                
-                totalTokens += result.earnedToken || 0;
-                totalGems += result.earnedGem || 0;
+            // 登录游戏
+            const accessToken = await signIn(wallet, refCode);
+            if (!accessToken) {
+                console.log('⏳ 等待 10 秒后继续...');
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                continue;
             }
 
-            console.log('  ==============================================');
-            console.log('                 战斗结果摘要                   ');
-            console.log('  ==============================================');
-            console.log(`  🏆 胜利: ${wins}`);
-            console.log(`  ❌ 失败: ${losses}`);
-            console.log(`  💰 总代币: ${totalTokens}`);
-            console.log(`  💎 总宝石: ${totalGems.toFixed(2)}`);
-            console.log('  ==============================================');
-        }
+            // 开启免费宝可梦
+            await openFreePokemon(accessToken);
+            
+            // 获取宝可梦列表
+            const pokemons = await getMyPokemons(accessToken);
+            if (pokemons.length === 0) {
+                console.log('⏳ 等待 10 秒后继续...');
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                continue;
+            }
 
-        await saveWallet(wallet, accessToken, refCode, balance);
+            // 进行两场战斗
+            const results = [];
+            for (let j = 0; j < 2; j++) {
+                const result = await fight(accessToken, pokemons[0].id);
+                if (result.success) {
+                    results.push(result);
+                }
+            }
+            battleResults.push(...results);
 
-        // 如果不是最后一个钱包，等待10秒后继续
-        if (i < count) {
-            console.log(`\n⏳ 等待10秒后创建下一个钱包...`);
+            // 完成任务
+            await completeTasks(accessToken);
+
+            // 获取余额
+            const balance = await getUserBalance(accessToken);
+
+            // 保存钱包信息
+            await saveWallet(wallet, accessToken, refCode, balance);
+
+            // 等待10秒后继续
+            if (i < count - 1) {
+                console.log('⏳ 等待 10 秒后继续...');
+                await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+        } catch (error) {
+            console.error(`❌ 处理钱包时发生错误: ${error.message}`);
+            console.log('⏳ 等待 10 秒后继续...');
             await new Promise(resolve => setTimeout(resolve, 10000));
         }
     }
 
-    console.log('\n==============================================');
-    console.log('               注册完成                       ');
-    console.log('==============================================');
+    // 显示战斗统计
+    displayBattleSummary(battleResults);
 }
 
 /**

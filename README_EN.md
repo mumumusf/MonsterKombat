@@ -81,9 +81,19 @@ npm install axios ethers chalk
 
 ## Usage Instructions
 
-1. Start the script
+1. Running Methods (Choose one):
+
 ```bash
-npm start
+# Method 1: Direct Run (Foreground)
+node monster.js
+
+# Method 2: Run with screen in background (Recommended)
+screen -S monster
+node monster.js
+# Press Ctrl+A then D to detach session
+
+# Method 3: Run with pm2 in background
+pm2 start monster.js --name monster
 ```
 
 2. Follow the prompts:
@@ -91,21 +101,44 @@ npm start
    - Enter the number of wallets to create
    - Wait for the script to complete automatically
 
-3. Running results:
+3. Expected Results:
    - All created wallet information will be saved in `wallets.json`
-   - Each wallet will automatically complete:
+   - For each wallet, it will automatically:
      * Create new wallet
      * Login to game
      * Open free Pokemon
      * Complete two battles
      * Complete all basic tasks
-     * Save wallet information and balance
+     * Save wallet info and balance
+
+4. Check Running Status:
+```bash
+# If using screen
+screen -r monster    # Reconnect to session
+screen -ls          # List all sessions
+
+# If using pm2
+pm2 logs monster    # View logs
+pm2 status         # Check status
+```
+
+5. Stop Running:
+```bash
+# If using screen
+screen -r monster    # Reconnect to session
+# Press Ctrl+C to stop program
+exit                # Exit session
+
+# If using pm2
+pm2 stop monster    # Stop program
+pm2 delete monster  # Delete program
+```
 
 ## Important Notes
 
 - ⚠️ Ensure stable network connection on VPS
 - ⚠️ Recommended to run script in background using screen or tmux
-- ⚠️ 10-second delay between each wallet creation to avoid server limits
+- ⚠️ 10-second delay between each wallet creation, regardless of success or failure
 - ⚠️ Regularly check wallets.json file for wallet information
 - ⚠️ Avoid creating large numbers of wallets frequently to prevent server restrictions
 
