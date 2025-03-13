@@ -1,0 +1,18 @@
+{
+  "name": "monster-kombat-bot",
+  "version": "1.0.0",
+  "description": "MonsterKombat 自动化工具",
+  "type": "module",
+  "main": "monster.js",
+  "scripts": {
+    "start": "node monster.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "小林",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.8.3",
+    "chalk": "^5.4.1",
+    "ethers": "^5.7.2"
+  }
+}
