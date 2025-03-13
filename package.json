@@ -14,5 +14,14 @@
     "axios": "^1.8.3",
     "chalk": "^5.4.1",
     "ethers": "^5.7.2"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mumumusf/3DOS-.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/mumumusf/3DOS-/issues"
+  },
+  "homepage": "https://github.com/mumumusf/3DOS-#readme"
 }

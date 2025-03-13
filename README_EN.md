@@ -75,8 +75,15 @@ cd monster-bot
 # Create package.json
 npm init -y
 
-# Install dependencies
-npm install axios ethers chalk
+# Install required dependencies
+npm install axios@1.8.3 ethers@5.7.2 chalk@5.4.1
+
+# If using Windows, also install
+npm install -g cross-env
+
+# If using Linux/Mac, you may need to install screen
+apt-get install screen  # Ubuntu/Debian
+yum install screen      # CentOS
 ```
 
 ## Usage Instructions
@@ -93,6 +100,7 @@ node monster.js
 # Press Ctrl+A then D to detach session
 
 # Method 3: Run with pm2 in background
+npm install -g pm2
 pm2 start monster.js --name monster
 ```
 

@@ -77,8 +77,15 @@ cd MonsterKombat
 # 创建 package.json
 npm init -y
 
-# 安装依赖
-npm install axios ethers chalk
+# 安装必要依赖
+npm install axios@1.8.3 ethers@5.7.2 chalk@5.4.1
+
+# 如果使用 Windows 系统，还需要安装
+npm install -g cross-env
+
+# 如果使用 Linux/Mac 系统，可能需要安装 screen
+apt-get install screen  # Ubuntu/Debian
+yum install screen      # CentOS
 ```
 
 ## 使用说明
@@ -95,6 +102,7 @@ node monster.js
 # 按 Ctrl+A 然后按 D 分离会话
 
 # 方式3：使用 pm2 后台运行
+npm install -g pm2
 pm2 start monster.js --name monster
 ```
 

@@ -16,6 +16,148 @@ const rl = createInterface({
 });
 
 /**
+ * 代理配置类
+ */
+class ProxyManager {
+    constructor() {
+        this.proxies = [];
+        this.currentIndex = 0;
+    }
+
+    /**
+     * 加载代理列表
+     * @returns {Promise<void>}
+     */
+    async loadProxies() {
+        try {
+            const data = await fs.readFile('proxies.txt', 'utf8');
+            this.proxies = data.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && !line.startsWith('#'));
+            console.log(`✅ 成功加载 ${this.proxies.length} 个代理`);
+        } catch (error) {
+            console.error('❌ 加载代理列表失败，将使用直连模式');
+            this.proxies = [];
+        }
+    }
+
+    /**
+     * 获取下一个代理
+     * @returns {string|null} 代理地址或null
+     */
+    getNextProxy() {
+        if (this.proxies.length === 0) return null;
+        
+        const proxy = this.proxies[this.currentIndex];
+        this.currentIndex = (this.currentIndex + 1) % this.proxies.length;
+        return proxy;
+    }
+
+    /**
+     * 解析代理字符串
+     * @param {string} proxyStr - 代理字符串
+     * @returns {object} - 解析后的代理信息
+     */
+    parseProxy(proxyStr) {
+        try {
+            let host, port, username, password, protocol = 'http';
+
+            // 处理带协议的URL格式
+            if (proxyStr.includes('://')) {
+                const url = new URL(proxyStr);
+                protocol = url.protocol.replace(':', '');
+                host = url.hostname;
+                port = url.port;
+                if (url.username && url.password) {
+                    username = decodeURIComponent(url.username);
+                    password = decodeURIComponent(url.password);
+                }
+            } 
+            // 处理其他格式 (ip:port:user:pass 或 ip:port)
+            else {
+                const parts = proxyStr.split(':');
+                host = parts[0];
+                port = parts[1];
+                username = parts[2];
+                password = parts[3];
+            }
+
+            return { protocol, host, port, username, password };
+        } catch (error) {
+            console.error(`❌ 代理解析错误: ${proxyStr}`);
+            return null;
+        }
+    }
+
+    /**
+     * 获取当前代理配置
+     * @param {string} proxy - 代理地址
+     * @returns {object|null} axios代理配置
+     */
+    getProxyConfig(proxy) {
+        if (!proxy) return null;
+
+        try {
+            const proxyInfo = this.parseProxy(proxy);
+            if (!proxyInfo) return null;
+
+            const config = {
+                proxy: {
+                    protocol: proxyInfo.protocol,
+                    host: proxyInfo.host,
+                    port: parseInt(proxyInfo.port)
+                }
+            };
+
+            // 如果有认证信息，添加到配置中
+            if (proxyInfo.username && proxyInfo.password) {
+                config.proxy.auth = {
+                    username: proxyInfo.username,
+                    password: proxyInfo.password
+                };
+            }
+
+            return config;
+        } catch (error) {
+            console.error(`❌ 代理配置错误: ${proxy}`);
+            return null;
+        }
+    }
+}
+
+// 创建代理管理器实例
+const proxyManager = new ProxyManager();
+
+/**
+ * 使用代理发送请求
+ * @param {Function} requestFn - 请求函数
+ * @returns {Promise} - 请求结果
+ */
+async function makeRequestWithProxy(requestFn) {
+    const proxy = proxyManager.getNextProxy();
+    const proxyConfig = proxy ? proxyManager.getProxyConfig(proxy) : null;
+    
+    if (proxy) {
+        const maskedProxy = proxy.replace(/:[^:@]+@/, ':****@').replace(/:[^:@]+$/, ':****');
+        console.log(`🌐 使用代理: ${maskedProxy}`);
+    }
+    
+    try {
+        return await requestFn(proxyConfig);
+    } catch (error) {
+        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+            console.error(`❌ 代理连接失败: ${error.message}`);
+            // 如果有多个代理，可以尝试使用下一个代理重试
+            if (proxyManager.proxies.length > 1) {
+                console.log('🔄 尝试使用下一个代理...');
+                return await makeRequestWithProxy(requestFn);
+            }
+        }
+        throw error;
+    }
+}
+
+/**
  * 获取默认请求头
  * @param {string} token - 授权令牌
  * @returns {object} - 请求头对象
@@ -66,6 +208,50 @@ async function createSignature(wallet, message) {
 }
 
 /**
+ * 随机延迟函数
+ * @param {number} min - 最小延迟时间(毫秒)
+ * @param {number} max - 最大延迟时间(毫秒)
+ * @returns {Promise} - 延迟Promise
+ */
+async function randomDelay(min = 10000, max = 30000) {
+    const delay = Math.floor(Math.random() * (max - min + 1) + min);
+    console.log(`⏳ 等待 ${delay/1000} 秒...`);
+    return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+/**
+ * 指数退避重试函数
+ * @param {Function} fn - 要重试的异步函数
+ * @param {number} maxRetries - 最大重试次数
+ * @param {number} baseDelay - 基础延迟时间(毫秒)
+ * @returns {Promise} - 函数执行结果
+ */
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 30000) {
+    let lastError;
+    
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+            
+            if (error.response?.status === 429) {
+                // 添加随机因子，避免多个请求同时重试
+                const jitter = Math.random() * 5000;
+                const delay = (baseDelay * Math.pow(2, i)) + jitter;
+                console.log(`⚠️ 请求限制，等待 ${Math.floor(delay/1000)} 秒后重试(${i + 1}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+            }
+            
+            throw error;
+        }
+    }
+    
+    throw lastError;
+}
+
+/**
  * 使用钱包登录游戏
  * @param {object} wallet - 钱包对象
  * @param {string} refCode - 推荐码
@@ -85,7 +271,14 @@ async function signIn(wallet, refCode) {
     };
 
     try {
-        const response = await axios.post(url, payload, { headers: getDefaultHeaders() });
+        const response = await retryWithBackoff(async () => {
+            return await makeRequestWithProxy(async (proxyConfig) => {
+                return await axios.post(url, payload, {
+                    ...proxyConfig,
+                    headers: getDefaultHeaders()
+                });
+            });
+        });
         console.log(`✅ 登录成功 = 地址: ${wallet.address}, 令牌: ${response.data.accessToken}`);
         return response.data.accessToken;
     } catch (error) {
@@ -366,61 +559,77 @@ function displayBattleSummary(battleResults) {
 async function registerWallets(count, refCode) {
     console.log(`\n🚀 开始创建 ${count} 个钱包...\n`);
     const battleResults = [];
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
 
     for (let i = 0; i < count; i++) {
         console.log(`\n📝 创建第 ${i + 1}/${count} 个钱包`);
         
         try {
+            // 如果连续错误次数过多，增加等待时间
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                const cooldownTime = 180000 + (Math.random() * 60000); // 3-4分钟随机冷却
+                console.log(`⚠️ 检测到多次连续错误，暂停操作 ${Math.floor(cooldownTime/1000)} 秒...`);
+                await new Promise(resolve => setTimeout(resolve, cooldownTime));
+                consecutiveErrors = 0;
+            }
+
+            // 创建新钱包前先等待一段随机时间
+            await randomDelay(15000, 45000);
+            
             // 创建新钱包
             const wallet = generateWallet();
             
             // 登录游戏
             const accessToken = await signIn(wallet, refCode);
             if (!accessToken) {
-                console.log('⏳ 等待 10 秒后继续...');
-                await new Promise(resolve => setTimeout(resolve, 10000));
+                consecutiveErrors++;
+                await randomDelay(20000, 60000); // 登录失败后等待更长时间
                 continue;
             }
 
             // 开启免费宝可梦
-            await openFreePokemon(accessToken);
+            await retryWithBackoff(async () => await openFreePokemon(accessToken));
             
             // 获取宝可梦列表
-            const pokemons = await getMyPokemons(accessToken);
+            const pokemons = await retryWithBackoff(async () => await getMyPokemons(accessToken));
             if (pokemons.length === 0) {
-                console.log('⏳ 等待 10 秒后继续...');
-                await new Promise(resolve => setTimeout(resolve, 10000));
+                consecutiveErrors++;
+                await randomDelay(20000, 60000);
                 continue;
             }
 
             // 进行两场战斗
             const results = [];
             for (let j = 0; j < 2; j++) {
-                const result = await fight(accessToken, pokemons[0].id);
+                const result = await retryWithBackoff(async () => await fight(accessToken, pokemons[0].id));
                 if (result.success) {
                     results.push(result);
                 }
+                await randomDelay(8000, 20000); // 战斗之间添加较短的随机延迟
             }
             battleResults.push(...results);
 
             // 完成任务
-            await completeTasks(accessToken);
+            await retryWithBackoff(async () => await completeTasks(accessToken));
 
             // 获取余额
-            const balance = await getUserBalance(accessToken);
+            const balance = await retryWithBackoff(async () => await getUserBalance(accessToken));
 
             // 保存钱包信息
             await saveWallet(wallet, accessToken, refCode, balance);
 
-            // 等待10秒后继续
+            // 重置连续错误计数
+            consecutiveErrors = 0;
+
+            // 在处理下一个钱包之前添加随机延迟
             if (i < count - 1) {
-                console.log('⏳ 等待 10 秒后继续...');
-                await new Promise(resolve => setTimeout(resolve, 10000));
+                await randomDelay(20000, 60000);
             }
         } catch (error) {
             console.error(`❌ 处理钱包时发生错误: ${error.message}`);
-            console.log('⏳ 等待 10 秒后继续...');
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            consecutiveErrors++;
+            await randomDelay(30000, 90000); // 错误后等待更长时间
         }
     }
 
@@ -438,10 +647,67 @@ function askQuestion(query) {
 }
 
 /**
+ * 从用户输入获取代理配置
+ * @returns {Promise<string[]|null>} - 代理配置数组或null
+ */
+async function getProxyFromInput() {
+    try {
+        console.log('\n代理格式支持:');
+        console.log('1. ip:port:username:password');
+        console.log('2. ip:port');
+        console.log('3. http://username:password@host:port');
+        console.log('4. socks5://username:password@host:port');
+        console.log('5. https://username:password@host:port\n');
+        console.log('提示: 可以输入多个代理，每行一个');
+        console.log('输入完成后请输入空行(直接回车)结束\n');
+        
+        const proxies = [];
+        while (true) {
+            const proxy = await askQuestion(`请输入第 ${proxies.length + 1} 个代理 (直接回车结束输入): `);
+            
+            if (!proxy.trim()) {
+                break;
+            }
+
+            // 验证代理格式
+            const proxyInfo = proxyManager.parseProxy(proxy.trim());
+            if (!proxyInfo) {
+                console.log('❌ 此代理格式无效，请重新输入');
+                continue;
+            }
+
+            const maskedProxy = proxy.trim().replace(/:[^:@]+@/, ':****@').replace(/:[^:@]+$/, ':****');
+            console.log(`✅ 已添加代理: ${maskedProxy}`);
+            proxies.push(proxy.trim());
+        }
+
+        if (proxies.length === 0) {
+            console.log('⚠️ 未输入代理，将使用直连模式');
+            return null;
+        }
+
+        // 保存到代理文件
+        await fs.writeFile('proxies.txt', proxies.join('\n') + '\n', 'utf8');
+        
+        console.log(`\n✅ 已成功设置 ${proxies.length} 个代理`);
+        return proxies;
+    } catch (error) {
+        console.error(`❌ 设置代理失败: ${error.message}`);
+        return null;
+    }
+}
+
+/**
  * 主函数
  */
 async function main() {
     displayBanner();
+
+    // 获取代理配置
+    await getProxyFromInput();
+    
+    // 加载代理列表
+    await proxyManager.loadProxies();
 
     const refCode = await getReferralCode();
     if (!refCode) {
